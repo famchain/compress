@@ -1,0 +1,31 @@
+#!/bin/sh
+
+riscv64-unknown-elf-as -o bin/compress.o compress.S || exit 1
+riscv64-unknown-elf-objcopy -O binary bin/compress.o bin/compress.bin || exit 1
+
+
+FILE=$1
+
+LS=`ls -l "$FILE"` || exit 1
+SIZE=$(ls -l "$FILE" | awk '{print $5}')
+HEX=$(printf '%08x' $SIZE)
+
+# Split into bytes and use printf \x to send raw binary
+# This bypasses the whole 'nested subshell octal' mess
+B3_H=$(echo $HEX | cut -c 1-2)
+B2_H=$(echo $HEX | cut -c 3-4)
+B1_H=$(echo $HEX | cut -c 5-6)
+B0_H=$(echo $HEX | cut -c 7-8)
+
+(
+  # Print raw bytes in Little-Endian order
+  printf "$B0_H$B1_H$B2_H$B3_H"
+  cat "$FILE"
+) | qemu-system-riscv64 \
+        -machine virt \
+        -nographic \
+        -bios none \
+        -smp 1 \
+        -device loader,file=./bin/compress.bin,addr=0x80000000
+
+
